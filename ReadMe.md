@@ -108,16 +108,6 @@ This makes the system reusable. Strategies only need to output target portfolio 
 - Defensive Momentum
 - SMA Cross
 
-## Storage
-
-The app uses local files in `storage/`:
-
-- `portfolio_state.json`
-- `recommendation_log.csv`
-- `execution_log.csv`
-- `portfolio_snapshots.csv`
-
-These files are intentionally ignored by Git so personal portfolio information is not committed.
 
 ## Updating Market Data
 
@@ -143,3 +133,46 @@ git init
 git add .
 git commit -m "Initial Streamlit portfolio app"
 ```
+
+## Privacy and local-only portfolio storage
+
+The app is designed so your sensitive personal data stays on your own machine.
+
+The following files are created locally when you use the app and are intentionally ignored by Git:
+
+```text
+storage/portfolio_state.json
+storage/recommendation_log.csv
+storage/execution_log.csv
+storage/portfolio_snapshots.csv
+storage/*.db
+storage/*.sqlite
+storage/*.parquet
+.env
+.streamlit/secrets.toml
+```
+
+## Troubleshooting live data refresh
+
+The Data Update page uses `yfinance` to download prices and `pandas.read_html` to optionally refresh the current NASDAQ-100 ticker universe from Wikipedia.
+
+Install or update the live-data dependencies in the same environment that runs Streamlit:
+
+```bash
+python -m pip install --upgrade yfinance curl_cffi lxml
+```
+
+Then restart Streamlit:
+
+```bash
+streamlit run app.py
+```
+
+If `yfinance` is installed but refresh still fails, common causes are:
+
+1. Streamlit is running from a different virtual environment than the one where `yfinance` was installed.
+2. Yahoo Finance is temporarily throttling or blocking requests.
+3. Wikipedia ticker refresh is blocked by the network or missing HTML parser dependencies.
+4. Your local firewall, VPN, or campus/company network blocks outbound requests.
+
+Try unchecking **Refresh current NASDAQ-100 ticker universe from Wikipedia** on the Data Update page. The app will then use the local ticker universe from `data/nasdaq100_tickers.csv` and only request prices from Yahoo Finance.

@@ -34,9 +34,21 @@ class RefreshResult:
     benchmark_rows_written: int
 
 
+class MarketDataError(RuntimeError):
+    """Raised when live market data refresh fails with a user-actionable message."""
+
+
+def yfinance_environment() -> dict[str, str | bool]:
+    """Return basic diagnostics for the Data Update page."""
+    if yf is None:
+        return {"installed": False, "version": "not installed"}
+    version = getattr(yf, "__version__", "unknown")
+    return {"installed": True, "version": str(version)}
+
+
 def _require_yfinance() -> None:
     if yf is None:
-        raise ImportError("yfinance is not installed. Run `pip install yfinance` and try again.")
+        raise ImportError("yfinance is not installed in this Python environment. Run `pip install yfinance` inside the same virtual environment that runs Streamlit, then restart Streamlit.")
 
 
 def _normalize_yahoo_ticker(symbol: str) -> str:
@@ -110,23 +122,56 @@ def get_ticker_universe(use_live_wikipedia: bool = True) -> list[str]:
     return load_local_ticker_universe(NASDAQ_PRICES_PATH)
 
 
-def _download_yfinance(tickers: list[str], period: str = "5y", interval: str = "1d") -> pd.DataFrame:
-    """Download OHLCV data for a list of tickers from yfinance."""
+def _download_yfinance(
+    tickers: list[str],
+    period: str = "5y",
+    interval: str = "1d",
+    chunk_size: int = 25,
+) -> pd.DataFrame:
+    """Download OHLCV data from yfinance with chunked fallback.
+
+    Bulk yfinance downloads can fail when the ticker list is large, a single
+    symbol is temporarily unavailable, or Yahoo throttles the request. Chunking
+    keeps the refresh usable and lets us save all successfully downloaded names.
+    """
     _require_yfinance()
+    tickers = [_normalize_yahoo_ticker(t) for t in tickers if str(t).strip()]
     if not tickers:
         raise ValueError("Ticker list is empty.")
 
-    data = yf.download(
-        tickers=tickers,
-        period=period,
-        interval=interval,
-        auto_adjust=False,
-        group_by="column",
-        progress=False,
-        threads=True,
-    )
-    if data.empty:
-        raise ValueError("No data was returned by yfinance.")
+    pieces: list[pd.DataFrame] = []
+    failures: list[str] = []
+    for i in range(0, len(tickers), max(1, chunk_size)):
+        chunk = tickers[i : i + max(1, chunk_size)]
+        try:
+            data = yf.download(
+                tickers=chunk,
+                period=period,
+                interval=interval,
+                auto_adjust=False,
+                group_by="column",
+                progress=False,
+                threads=True,
+            )
+            if data is None or data.empty:
+                failures.extend(chunk)
+                continue
+            pieces.append(data.sort_index())
+        except Exception:
+            failures.extend(chunk)
+
+    if not pieces:
+        raise MarketDataError(
+            "No data was returned by yfinance. This usually means Streamlit is running in a "
+            "Python environment without internet access, Yahoo Finance is temporarily blocking "
+            "the request, or the installed yfinance package is outdated. Try `python -m pip "
+            "install --upgrade yfinance curl_cffi lxml`, restart Streamlit, and verify that your "
+            "browser or firewall is not blocking outbound connections."
+        )
+
+    data = pd.concat(pieces, axis=1)
+    # Remove duplicate columns that can happen if a retry/chunk overlap occurs.
+    data = data.loc[:, ~data.columns.duplicated()]
     return data.sort_index()
 
 

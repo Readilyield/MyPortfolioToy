@@ -6,6 +6,7 @@ from src.data_loader import load_price_matrix, latest_prices
 from src.portfolio_state import load_portfolio_state, portfolio_value, append_portfolio_snapshot
 from src.paths import NASDAQ_PRICES_PATH
 from src.market_data import load_data_metadata
+from src.privacy import private_storage_summary
 
 st.set_page_config(page_title="NASDAQ-100 Portfolio App", page_icon="📈", layout="wide")
 
@@ -13,6 +14,13 @@ st.title("NASDAQ-100 Personal Portfolio Strategy App")
 st.caption("Educational research app for target-weight strategies, recommendation tracking, and portfolio monitoring.")
 
 st.warning("This app is for educational and personal research use only. It does not provide financial advice.")
+
+privacy = private_storage_summary()
+st.info(
+    "Privacy mode: portfolio setup, recommendations, execution logs, and snapshots are stored only in "
+    f"`{privacy['storage_dir']}` on this machine. The repo ignores `storage/*.json`, "
+    "`storage/*.csv`, local databases, `.env`, and `.streamlit/secrets.toml`."
+)
 
 @st.cache_data(show_spinner=False)
 def cached_prices():

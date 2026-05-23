@@ -6,3 +6,5 @@ plotly>=5.18
 yfinance>=0.2.40
 pyarrow>=14.0
 pytest>=8.0
+lxml
+curl_cffi

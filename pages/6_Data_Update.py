@@ -5,7 +5,7 @@ import json
 import streamlit as st
 
 from src.data_loader import load_price_matrix
-from src.market_data import load_data_metadata, refresh_market_data, get_ticker_universe
+from src.market_data import load_data_metadata, refresh_market_data, get_ticker_universe, yfinance_environment
 from src.paths import NASDAQ_PRICES_PATH, NDX_PRICES_PATH, DATA_METADATA_PATH
 
 st.set_page_config(page_title="Data Update", layout="wide")
@@ -15,6 +15,21 @@ st.caption("Refresh NASDAQ-100 daily prices and the NDX benchmark from the inter
 st.warning(
     "The app downloads market data for personal research and educational use. "
     "Check the latest data date before relying on any recommendation."
+)
+
+
+env = yfinance_environment()
+if env.get("installed"):
+    st.success(f"yfinance is installed in this Streamlit environment. Version: {env.get('version')}")
+else:
+    st.error("yfinance is not installed in the Python environment currently running Streamlit.")
+    st.code("python -m pip install --upgrade yfinance curl_cffi lxml", language="bash")
+
+st.info(
+    "If refresh still fails even though yfinance is installed, the most common causes are: "
+    "Streamlit is running from a different virtual environment, Yahoo Finance is temporarily throttling requests, "
+    "Wikipedia ticker refresh is blocked, or your local network/firewall blocks outbound connections. "
+    "Try disabling the Wikipedia ticker refresh first, then retry."
 )
 
 metadata = load_data_metadata()
@@ -71,7 +86,8 @@ if st.button("Download latest market data", type="primary"):
         except Exception as exc:
             st.error(f"Refresh failed: {exc}")
             st.info(
-                "Common fixes: check your internet connection, install `yfinance`, or disable the live Wikipedia ticker refresh "
+                "Common fixes: run `python -m pip install --upgrade yfinance curl_cffi lxml` in the same environment "
+                "that runs Streamlit, restart Streamlit, check your internet connection, or disable the live Wikipedia ticker refresh "
                 "to use the local ticker universe."
             )
 
