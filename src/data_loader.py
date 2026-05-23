@@ -7,7 +7,7 @@ try:
 except Exception:  # optional dependency at runtime
     yf = None
 
-from src.paths import NASDAQ_PRICES_PATH, NDX_PRICES_PATH
+from src.paths import NASDAQ_PRICES_PATH, NDX_PRICES_PATH, NASDAQ_TICKERS_PATH
 from src.utils import read_price_data, make_close_price_matrix
 
 
@@ -28,9 +28,18 @@ def load_ndx_series(csv_path: str | Path = NDX_PRICES_PATH) -> pd.Series:
 
 
 def load_ticker_universe(csv_path: str | Path = NASDAQ_PRICES_PATH) -> list[str]:
-    """Return all tickers in the local NASDAQ-100 dataset."""
+    """Return all tickers in the local NASDAQ-100 dataset.
+
+    If data/nasdaq100_tickers.csv exists, it is preferred because it stores the
+    latest ticker universe used during a live refresh.
+    """
+    ticker_path = Path(NASDAQ_TICKERS_PATH)
+    if ticker_path.exists():
+        tickers = pd.read_csv(ticker_path)
+        if "ticker" in tickers.columns and not tickers.empty:
+            return sorted(tickers["ticker"].dropna().astype(str).unique().tolist())
     df = pd.read_csv(csv_path, usecols=["ticker"])
-    return sorted(df["ticker"].dropna().unique().tolist())
+    return sorted(df["ticker"].dropna().astype(str).unique().tolist())
 
 
 def latest_prices(price_matrix: pd.DataFrame) -> pd.Series:
@@ -41,18 +50,22 @@ def latest_prices(price_matrix: pd.DataFrame) -> pd.Series:
 
 
 def refresh_prices_with_yfinance(tickers: list[str], period: str = "5y") -> pd.DataFrame:
-    """Download adjusted close prices from Yahoo Finance through yfinance.
+    """Download close prices from Yahoo Finance through yfinance.
 
-    This function is optional. The app works with local CSV data without calling it.
+    This compatibility helper returns a date-by-ticker close-price matrix. The
+    full app refresh flow is implemented in src.market_data.refresh_market_data.
     """
     if yf is None:
         raise ImportError("yfinance is not installed. Install it or use local CSV data.")
-    data = yf.download(tickers, period=period, auto_adjust=False, progress=False)
+    data = yf.download(tickers, period=period, auto_adjust=False, progress=False, group_by="column")
     if isinstance(data.columns, pd.MultiIndex):
-        if "Close" in data.columns.get_level_values(0):
+        if "Adj Close" in data.columns.get_level_values(0):
+            close = data["Adj Close"]
+        elif "Close" in data.columns.get_level_values(0):
             close = data["Close"]
         else:
             close = data.xs("Close", axis=1, level=1)
     else:
-        close = data[["Close"]].rename(columns={"Close": tickers[0]})
+        close_col = "Adj Close" if "Adj Close" in data.columns else "Close"
+        close = data[[close_col]].rename(columns={close_col: tickers[0]})
     return close.dropna(how="all").sort_index()

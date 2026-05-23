@@ -30,9 +30,11 @@ nasdaq100-portfolio-app/
 │   ├── 2_Strategy_Recommendation.py
 │   ├── 3_Portfolio_Tracker.py
 │   ├── 4_Action_History.py
-│   └── 5_Backtest_Lab.py
+│   ├── 5_Backtest_Lab.py
+│   └── 6_Data_Update.py
 ├── src/
 │   ├── data_loader.py
+│   ├── market_data.py
 │   ├── portfolio_state.py
 │   ├── recommendation_engine.py
 │   ├── execution_engine.py
@@ -43,7 +45,9 @@ nasdaq100-portfolio-app/
 │   └── plotting.py
 ├── data/
 │   ├── nasdaq100_daily_5y.csv
-│   └── NDX_daily_5y.csv
+│   ├── nasdaq100_tickers.csv
+│   ├── NDX_daily_5y.csv
+│   └── market_data_metadata.json  # created after refresh
 ├── storage/
 ├── notebooks/
 └── tests/
@@ -81,7 +85,8 @@ streamlit run app.py
 6. For each stock, record whether the recommendation was executed.
 7. Open **Portfolio Tracker** to review current holdings and target allocation.
 8. Open **Action History** to audit past recommendations and executions.
-9. Open **Backtest Lab** to test strategies and parameters.
+9. Open **Data Update** whenever you want to download the latest NASDAQ-100 and NDX daily prices.
+10. Open **Backtest Lab** to test strategies and parameters.
 
 ## Strategy Design
 
@@ -114,9 +119,22 @@ The app uses local files in `storage/`:
 
 These files are intentionally ignored by Git so personal portfolio information is not committed.
 
-## Data
+## Updating Market Data
 
-The first version uses the provided local NASDAQ-100 and NDX CSV files. The optional `refresh_prices_with_yfinance` helper in `src/data_loader.py` can be extended later to refresh prices.
+The app now includes a **Data Update** page. Click **Download latest market data** to refresh the local CSV files from the internet.
+
+The refresh process does the following:
+
+1. Fetches the current NASDAQ-100 ticker universe from Wikipedia, unless that option is disabled.
+2. Downloads NASDAQ-100 OHLCV daily price data through `yfinance`.
+3. Downloads the NDX benchmark series through `yfinance`.
+4. Overwrites `data/nasdaq100_daily_5y.csv` and `data/NDX_daily_5y.csv`.
+5. Writes the ticker universe to `data/nasdaq100_tickers.csv`.
+6. Writes refresh metadata to `data/market_data_metadata.json`.
+
+If the live Wikipedia ticker refresh fails, disable that checkbox and the app will use the local ticker universe already stored in the repo.
+
+The refresh button clears Streamlit's cached data after a successful download, so the recommendation and tracker pages will use the latest local files after refresh.
 
 ## Git Setup
 

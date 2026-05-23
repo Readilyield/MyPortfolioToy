@@ -5,6 +5,7 @@ import streamlit as st
 from src.data_loader import load_price_matrix, latest_prices
 from src.portfolio_state import load_portfolio_state, portfolio_value, append_portfolio_snapshot
 from src.paths import NASDAQ_PRICES_PATH
+from src.market_data import load_data_metadata
 
 st.set_page_config(page_title="NASDAQ-100 Portfolio App", page_icon="📈", layout="wide")
 
@@ -18,6 +19,7 @@ def cached_prices():
     return load_price_matrix(NASDAQ_PRICES_PATH)
 
 prices = cached_prices()
+metadata = load_data_metadata()
 state = load_portfolio_state()
 latest = latest_prices(prices)
 value = portfolio_value(state, latest)
@@ -27,6 +29,11 @@ col1.metric("Cash", f"${state.cash:,.2f}")
 col2.metric("Portfolio Value", f"${value:,.2f}")
 col3.metric("Holdings", len(state.holdings))
 col4.metric("Latest Data Date", prices.index[-1].date().isoformat() if not prices.empty else "N/A")
+
+if metadata:
+    st.caption(f"Market data source: {metadata.get('source', 'local CSV')} | Last refresh UTC: {metadata.get('refreshed_at_utc', 'N/A')}")
+else:
+    st.caption("Market data source: bundled local CSV. Open Data Update to download the latest NASDAQ-100 prices.")
 
 st.subheader("Current Strategy")
 st.write(state.strategy)
@@ -42,6 +49,7 @@ st.markdown(
 2. Open **Strategy Recommendation** to generate daily buy/sell/hold actions.
 3. Mark whether recommendations were executed. No input means not executed.
 4. Use **Portfolio Tracker** and **Action History** to monitor current state and past actions.
-5. Use **Backtest Lab** to test strategies before selecting them for tracking.
+5. Open **Data Update** whenever you want to download the latest NASDAQ-100 and NDX daily data.
+6. Use **Backtest Lab** to test strategies before selecting them for tracking.
     """
 )
