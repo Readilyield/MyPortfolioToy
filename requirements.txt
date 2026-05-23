@@ -1,8 +1,8 @@
-streamlit
-pandas
-numpy
-matplotlib
-plotly
-yfinance
-pyarrow
-pytest
+streamlit>=1.34
+pandas>=2.0
+numpy>=1.24
+matplotlib>=3.7
+plotly>=5.18
+yfinance>=0.2.40
+pyarrow>=14.0
+pytest>=8.0
