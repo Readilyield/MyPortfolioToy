@@ -7,6 +7,7 @@ from src.portfolio_state import load_portfolio_state, portfolio_value, append_po
 from src.paths import NASDAQ_PRICES_PATH
 from src.market_data import load_data_metadata
 from src.privacy import private_storage_summary
+from src.recommendation_ui import render_recommendation_dashboard
 
 st.set_page_config(page_title="NASDAQ-100 Portfolio App", page_icon="📈", layout="wide")
 
@@ -31,6 +32,7 @@ metadata = load_data_metadata()
 state = load_portfolio_state()
 latest = latest_prices(prices)
 value = portfolio_value(state, latest)
+setup_done = bool(state.holdings) or float(state.cash or 0.0) > 0
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Cash", f"${state.cash:,.2f}")
@@ -43,21 +45,34 @@ if metadata:
 else:
     st.caption("Market data source: bundled local CSV. Open Data Update to download the latest NASDAQ-100 prices.")
 
-st.subheader("Current Strategy")
-st.write(state.strategy)
+if setup_done:
+    st.divider()
+    st.header("Today’s Strategy Recommendation")
+    render_recommendation_dashboard(prices, key_prefix="home", show_full_table=False)
 
-if st.button("Save today’s portfolio snapshot"):
-    append_portfolio_snapshot(state, latest)
-    st.success("Snapshot saved.")
-
-st.subheader("Workflow")
-st.markdown(
-    """
+    with st.expander("Portfolio workflow and maintenance", expanded=False):
+        st.markdown(
+            """
+1. Use **Initial Setup** only when cash, holdings, strategy parameters, or trading preferences need to change.
+2. The home page opens directly to **Strategy Recommendation** after setup is complete.
+3. Use **Data Update** whenever you want the latest NASDAQ-100, NDX, or supplemental ticker prices.
+4. Use **Portfolio Tracker** and **Action History** to monitor current state and past actions.
+5. Use **Backtest Lab** to test strategies before selecting them for tracking.
+            """
+        )
+        if st.button("Save today’s portfolio snapshot"):
+            append_portfolio_snapshot(load_portfolio_state(), latest)
+            st.success("Snapshot saved.")
+else:
+    st.subheader("Setup required")
+    st.write("Open **Initial Setup** to enter cash, holdings, strategy, and trading preferences. After that, this home page will show your daily strategy recommendations first.")
+    st.markdown(
+        """
+### Workflow
 1. Open **Initial Setup** and enter cash, holdings, strategy, and trading preferences.
-2. Open **Strategy Recommendation** to generate daily buy/sell/hold actions.
+2. Return to this home page to see daily strategy recommendations at the top.
 3. Mark whether recommendations were executed. No input means not executed.
 4. Use **Portfolio Tracker** and **Action History** to monitor current state and past actions.
-5. Open **Data Update** whenever you want to download the latest NASDAQ-100 and NDX daily data.
-6. Use **Backtest Lab** to test strategies before selecting them for tracking.
-    """
-)
+5. Open **Data Update** whenever you want to download the latest market data.
+        """
+    )

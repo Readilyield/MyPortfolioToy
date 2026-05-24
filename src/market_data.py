@@ -13,7 +13,7 @@ try:
 except Exception:  # yfinance is optional until a user refreshes data
     yf = None
 
-from src.paths import DATA_DIR, NASDAQ_PRICES_PATH, NDX_PRICES_PATH, NASDAQ_TICKERS_PATH, DATA_METADATA_PATH
+from src.paths import DATA_DIR, STORAGE_DIR, NASDAQ_PRICES_PATH, NDX_PRICES_PATH, NASDAQ_TICKERS_PATH, DATA_METADATA_PATH, SUPPLEMENTAL_PRICES_PATH
 
 WIKIPEDIA_NASDAQ100_URL = "https://en.wikipedia.org/wiki/Nasdaq-100"
 DEFAULT_BENCHMARK_TICKER = "^NDX"
@@ -307,6 +307,39 @@ def refresh_market_data(
         end_date=metadata["end_date"],
         benchmark_rows_written=int(len(ndx_df)),
     )
+
+
+def refresh_supplemental_ticker_data(
+    tickers: Iterable[str],
+    period: str = "5y",
+    interval: str = "1d",
+    output_path: Path = SUPPLEMENTAL_PRICES_PATH,
+) -> dict:
+    """Download prices for user-tracked tickers outside the NASDAQ-100 universe.
+
+    This file is stored in storage/ rather than data/ because the ticker list can
+    reveal private holdings. The storage folder is ignored by Git.
+    """
+    normalized = sorted(dict.fromkeys(_normalize_yahoo_ticker(t) for t in tickers if str(t).strip()))
+    if not normalized:
+        raise ValueError("No supplemental tickers were provided.")
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    raw = _download_yfinance(normalized, period=period, interval=interval, chunk_size=10)
+    long_df = yfinance_ohlcv_to_long(raw, normalized)
+    if long_df.empty:
+        raise ValueError("Downloaded supplemental data could not be converted into the app schema.")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    long_df.to_csv(output_path, index=False)
+    downloaded = sorted(long_df["ticker"].unique().tolist())
+    return {
+        "path": str(output_path),
+        "tickers_requested": len(normalized),
+        "tickers_downloaded": len(downloaded),
+        "downloaded_tickers": downloaded,
+        "rows_written": int(len(long_df)),
+        "start_date": long_df["date"].min().date().isoformat(),
+        "end_date": long_df["date"].max().date().isoformat(),
+    }
 
 
 def load_data_metadata(path: Path = DATA_METADATA_PATH) -> dict:

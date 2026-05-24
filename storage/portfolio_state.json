@@ -1,0 +1,51 @@
+{
+  "cash": 2382.48,
+  "holdings": {
+    "MSFT": {
+      "shares": 8.0,
+      "average_cost": 400.05
+    },
+    "DUOL": {
+      "shares": 26.0,
+      "average_cost": 191.14
+    },
+    "ORCL": {
+      "shares": 10.0,
+      "average_cost": 181.0
+    },
+    "LULU": {
+      "shares": 14.0,
+      "average_cost": 181.38
+    },
+    "IGV": {
+      "shares": 10.0,
+      "average_cost": 93.46
+    },
+    "NFLX": {
+      "shares": 8.0,
+      "average_cost": 88.06
+    },
+    "BABA": {
+      "shares": 5.0,
+      "average_cost": 141.4
+    },
+    "ONON": {
+      "shares": 10.0,
+      "average_cost": 37.6
+    }
+  },
+  "strategy": "Defensive Momentum",
+  "settings": {
+    "strategy_params": {
+      "lookback": 90,
+      "short_lookback": 5,
+      "top_k": 6,
+      "vol_window": 20,
+      "stock_ma_window": 150
+    },
+    "max_allocation_per_stock": 0.25000000000000006,
+    "min_trade_value": 50.0,
+    "minimum_price_band_pct": 0.01
+  },
+  "last_updated": "2026-05-23"
+}

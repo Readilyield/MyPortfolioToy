@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 
 from src.paths import PORTFOLIO_STATE_PATH, STORAGE_DIR, SNAPSHOT_LOG_PATH
+from src.data_loader import normalize_ticker
 
 
 @dataclass
@@ -73,7 +74,7 @@ def frame_to_holdings(df: pd.DataFrame, valid_tickers: set[str] | None = None) -
     if df is None or df.empty:
         return holdings
     for _, row in df.iterrows():
-        ticker = str(row.get("ticker", "")).upper().strip()
+        ticker = normalize_ticker(row.get("ticker", ""))
         if not ticker or ticker == "NAN":
             continue
         if valid_tickers is not None and ticker not in valid_tickers:

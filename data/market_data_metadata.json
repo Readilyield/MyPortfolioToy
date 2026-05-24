@@ -1,0 +1,14 @@
+{
+  "source": "yfinance/Yahoo Finance",
+  "ticker_universe_source": "Wikipedia Nasdaq-100",
+  "period": "5y",
+  "interval": "1d",
+  "refreshed_at_utc": "2026-05-23T18:34:50.357624+00:00",
+  "tickers_requested": 101,
+  "tickers_downloaded": 101,
+  "rows_written": 125714,
+  "start_date": "2021-05-24",
+  "end_date": "2026-05-22",
+  "benchmark_ticker": "^NDX",
+  "benchmark_rows_written": 1256
+}

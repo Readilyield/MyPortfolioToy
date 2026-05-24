@@ -4,13 +4,13 @@ import json
 
 import streamlit as st
 
-from src.data_loader import load_price_matrix
-from src.market_data import load_data_metadata, refresh_market_data, get_ticker_universe, yfinance_environment
-from src.paths import NASDAQ_PRICES_PATH, NDX_PRICES_PATH, DATA_METADATA_PATH
+from src.data_loader import load_price_matrix, load_ticker_universe, normalize_ticker
+from src.market_data import load_data_metadata, refresh_market_data, get_ticker_universe, yfinance_environment, refresh_supplemental_ticker_data
+from src.paths import NASDAQ_PRICES_PATH, NDX_PRICES_PATH, DATA_METADATA_PATH, SUPPLEMENTAL_PRICES_PATH
 
 st.set_page_config(page_title="Data Update", layout="wide")
 st.title("Data Update")
-st.caption("Refresh NASDAQ-100 daily prices and the NDX benchmark from the internet.")
+st.caption("Refresh NASDAQ-100 strategy prices, the NDX benchmark, and private supplemental holdings prices from the internet.")
 
 st.warning(
     "The app downloads market data for personal research and educational use. "
@@ -90,6 +90,51 @@ if st.button("Download latest market data", type="primary"):
                 "that runs Streamlit, restart Streamlit, check your internet connection, or disable the live Wikipedia ticker refresh "
                 "to use the local ticker universe."
             )
+
+
+st.divider()
+st.subheader("Refresh tracked supplemental tickers")
+st.caption(
+    "Use this for holdings outside the NASDAQ-100 universe, such as DUOL, LULU, or IGV. "
+    "Supplemental price data is written to storage/supplemental_daily_prices.csv, which is ignored by Git."
+)
+
+try:
+    from src.portfolio_state import load_portfolio_state
+    state = load_portfolio_state()
+    nasdaq_set = set(load_ticker_universe())
+    outside_holdings = sorted(t for t in state.holdings if normalize_ticker(t) not in nasdaq_set)
+except Exception:
+    outside_holdings = []
+
+default_supplemental = ", ".join(outside_holdings)
+supplemental_text = st.text_input(
+    "Supplemental tickers to refresh",
+    value=default_supplemental,
+    placeholder="DUOL, LULU, IGV",
+    help="Comma- or space-separated Yahoo-compatible tickers. This is private local app data, not part of the public Git repo.",
+)
+
+if SUPPLEMENTAL_PRICES_PATH.exists():
+    st.write(f"Current supplemental price file: `{SUPPLEMENTAL_PRICES_PATH}`")
+else:
+    st.info("No supplemental price file exists yet.")
+
+if st.button("Download supplemental ticker prices"):
+    tickers = [normalize_ticker(x) for x in supplemental_text.replace(",", " ").split() if x.strip()]
+    with st.spinner("Downloading supplemental ticker prices..."):
+        try:
+            summary = refresh_supplemental_ticker_data(tickers, period=period, interval=interval)
+            st.cache_data.clear()
+            st.success(
+                f"Supplemental refresh complete: {summary['rows_written']:,} rows, "
+                f"{summary['tickers_downloaded']}/{summary['tickers_requested']} tickers, "
+                f"date range {summary['start_date']} to {summary['end_date']}."
+            )
+            st.write("Downloaded tickers: " + ", ".join(summary["downloaded_tickers"]))
+        except Exception as exc:
+            st.error(f"Supplemental refresh failed: {exc}")
+
 
 st.subheader("Refresh metadata")
 if DATA_METADATA_PATH.exists():

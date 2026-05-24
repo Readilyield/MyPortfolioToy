@@ -40,26 +40,6 @@ def inverse_vol_weight_selected(selected_tickers: list[str], returns_window: pd.
 
 
 
-def benchmark_sma_cross(short_window: int = 20, long_window: int = 50):
-    """
-    Benchmark 1 from the project description.
-    Select stocks with short SMA above long SMA, then equal-weight them.
-    """
-
-    def strategy(history: pd.DataFrame, current_date: pd.Timestamp) -> pd.Series:
-        tickers = list(history.columns)
-        if len(history) < long_window:
-            return pd.Series(0.0, index=tickers)
-
-        short_ma = history.tail(short_window).mean()
-        long_ma = history.tail(long_window).mean()
-        selected = list(short_ma[short_ma > long_ma].index)
-        return equal_weight_selected(selected, tickers)
-
-    return strategy
-
-
-
 def benchmark_topk_momentum(lookback: int = 30, top_k: int = 10):
     """
     Benchmark 2 from the project description.
@@ -69,83 +49,6 @@ def benchmark_topk_momentum(lookback: int = 30, top_k: int = 10):
     def strategy(history: pd.DataFrame, current_date: pd.Timestamp) -> pd.Series:
         tickers = list(history.columns)
         if len(history) < lookback + 1:
-            return pd.Series(0.0, index=tickers)
-
-        trailing_returns = history.iloc[-1] / history.iloc[-lookback - 1] - 1.0
-        selected = list(trailing_returns.nlargest(top_k).index)
-        return equal_weight_selected(selected, tickers)
-
-    return strategy
-
-
-
-def topk_momentum_inverse_vol(lookback: int = 30, top_k: int = 10, vol_window: int = 20):
-    """A stronger variation of momentum using inverse-volatility weighting."""
-
-    def strategy(history: pd.DataFrame, current_date: pd.Timestamp) -> pd.Series:
-        tickers = list(history.columns)
-        if len(history) < max(lookback + 1, vol_window + 1):
-            return pd.Series(0.0, index=tickers)
-
-        trailing_returns = history.iloc[-1] / history.iloc[-lookback - 1] - 1.0
-        selected = list(trailing_returns.nlargest(top_k).index)
-        returns_window = history.pct_change(fill_method=None).dropna().tail(vol_window)
-        return inverse_vol_weight_selected(selected, returns_window, tickers)
-
-    return strategy
-
-
-
-def low_vol_momentum_filter(lookback: int = 60, top_k: int = 10, vol_window: int = 20):
-    """Select high-momentum stocks only from the lower-volatility half of the universe."""
-
-    def strategy(history: pd.DataFrame, current_date: pd.Timestamp) -> pd.Series:
-        tickers = list(history.columns)
-        if len(history) < max(lookback + 1, vol_window + 1):
-            return pd.Series(0.0, index=tickers)
-
-        trailing_returns = history.iloc[-1] / history.iloc[-lookback - 1] - 1.0
-        vol = history.pct_change(fill_method=None).dropna().tail(vol_window).std(ddof=0)
-        low_vol_names = list(vol.nsmallest(max(len(vol) // 2, top_k)).index)
-        scores = trailing_returns.loc[low_vol_names]
-        selected = list(scores.nlargest(top_k).index)
-        return equal_weight_selected(selected, tickers)
-
-    return strategy
-
-
-
-def mean_reversion_bounce(lookback: int = 5, top_k: int = 10):
-    """Buy the biggest recent losers, equally weighted."""
-
-    def strategy(history: pd.DataFrame, current_date: pd.Timestamp) -> pd.Series:
-        tickers = list(history.columns)
-        if len(history) < lookback + 1:
-            return pd.Series(0.0, index=tickers)
-
-        trailing_returns = history.iloc[-1] / history.iloc[-lookback - 1] - 1.0
-        selected = list(trailing_returns.nsmallest(top_k).index)
-        return equal_weight_selected(selected, tickers)
-
-    return strategy
-
-
-
-def defensive_topk_momentum(lookback: int = 30, top_k: int = 10, market_filter_window: int = 100):
-    """
-    Hold top-K momentum names only when the market trend is positive.
-    The market proxy is the average close price across all stocks.
-    """
-
-    def strategy(history: pd.DataFrame, current_date: pd.Timestamp) -> pd.Series:
-        tickers = list(history.columns)
-        if len(history) < max(lookback + 1, market_filter_window):
-            return pd.Series(0.0, index=tickers)
-
-        market_proxy = history.mean(axis=1)
-        short_ma = market_proxy.tail(20).mean()
-        long_ma = market_proxy.tail(market_filter_window).mean()
-        if short_ma <= long_ma:
             return pd.Series(0.0, index=tickers)
 
         trailing_returns = history.iloc[-1] / history.iloc[-lookback - 1] - 1.0

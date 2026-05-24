@@ -12,3 +12,5 @@ NASDAQ_PRICES_PATH = DATA_DIR / "nasdaq100_daily_5y.csv"
 NDX_PRICES_PATH = DATA_DIR / "NDX_daily_5y.csv"
 NASDAQ_TICKERS_PATH = DATA_DIR / "nasdaq100_tickers.csv"
 DATA_METADATA_PATH = DATA_DIR / "market_data_metadata.json"
+
+SUPPLEMENTAL_PRICES_PATH = STORAGE_DIR / "supplemental_daily_prices.csv"
