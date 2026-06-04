@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 import streamlit as st
 
-from src.execution_engine import apply_execution, append_execution_log
+from src.execution_engine import apply_execution, append_execution_log, load_execution_log
+from src.data_loader import normalize_ticker
 from src.portfolio_state import PortfolioState, load_portfolio_state, save_portfolio_state
 from src.recommendation_engine import generate_recommendations, save_daily_recommendations
 from src.strategy_registry import STRATEGY_FACTORIES
+
+
+DAILY_ACTION_CAP = 10
+VISIBLE_ACTION_LIMIT = 5
+MARKET_TZ = ZoneInfo("America/New_York")
+MARKET_CLOSE_TIME = time(16, 0)
 
 
 ACTION_CSS = """
@@ -123,9 +133,86 @@ def ensure_strategy_selector(state: PortfolioState, key_prefix: str = "strategy"
     return state, True
 
 
+def _now_eastern() -> datetime:
+    return datetime.now(MARKET_TZ)
+
+
+def _market_closed_for_today(now: datetime | None = None) -> bool:
+    now = now or _now_eastern()
+    return now.time() >= MARKET_CLOSE_TIME
+
+
+def _active_recommendation_date(now: datetime | None = None) -> str:
+    """Return the date key for the current recommendation queue.
+
+    Recommendations are only visible before 4:00 PM Eastern. After that, the
+    queue is considered cleared for the day and no new action rows are shown.
+    """
+    now = now or _now_eastern()
+    return now.date().isoformat()
+
+
+def _action_identity(row: pd.Series) -> str:
+    return "|".join([
+        str(row.get("date", "")),
+        str(row.get("strategy", "")),
+        str(row.get("ticker", "")),
+        str(row.get("action", "")),
+    ])
+
+
+def _completed_action_ids(action_date: str, strategy: str) -> set[str]:
+    log = load_execution_log()
+    if log.empty:
+        return set()
+    needed = {"date", "ticker", "recommended_action"}
+    if not needed.issubset(log.columns):
+        return set()
+
+    subset = log[log["date"].astype(str).eq(str(action_date))].copy()
+    if subset.empty:
+        return set()
+
+    # Newer rows include the strategy. Older logs do not, so keep them compatible
+    # and treat same-date/ticker/action rows as completed for any strategy.
+    if "strategy" in subset.columns:
+        subset = subset[(subset["strategy"].isna()) | (subset["strategy"].astype(str).eq(str(strategy)))]
+
+    ids = set()
+    for _, row in subset.iterrows():
+        ids.add("|".join([
+            str(row.get("date", "")),
+            str(row.get("strategy", strategy) if pd.notna(row.get("strategy", strategy)) else strategy),
+            str(row.get("ticker", "")),
+            str(row.get("recommended_action", "")),
+        ]))
+        # Backward-compatible id for logs that do not have a strategy column.
+        ids.add("|".join([
+            str(row.get("date", "")),
+            str(strategy),
+            str(row.get("ticker", "")),
+            str(row.get("recommended_action", "")),
+        ]))
+    return ids
+
+
+def _pending_action_queue(recs: pd.DataFrame, action_date: str, strategy: str) -> pd.DataFrame:
+    if recs.empty:
+        return pd.DataFrame()
+    queue = _rank_actionable(recs).head(DAILY_ACTION_CAP).copy()
+    if queue.empty:
+        return queue
+    queue["date"] = action_date
+    completed_ids = _completed_action_ids(action_date, strategy)
+    if not completed_ids:
+        return queue.reset_index(drop=True)
+    mask = ~queue.apply(lambda row: _action_identity(row) in completed_ids, axis=1)
+    return queue[mask].reset_index(drop=True)
+
+
 def build_recommendations_for_state(state: PortfolioState, prices: pd.DataFrame) -> pd.DataFrame:
     settings = state.settings or {}
-    return generate_recommendations(
+    recs = generate_recommendations(
         state=state,
         price_history=prices,
         strategy_name=state.strategy,
@@ -133,7 +220,11 @@ def build_recommendations_for_state(state: PortfolioState, prices: pd.DataFrame)
         max_allocation_per_stock=float(settings.get("max_allocation_per_stock", 0.20)),
         min_trade_value=float(settings.get("min_trade_value", 50.0)),
         minimum_price_band_pct=float(settings.get("minimum_price_band_pct", 0.01)),
+        max_daily_actions=DAILY_ACTION_CAP,
     )
+    if not recs.empty:
+        recs["date"] = _active_recommendation_date()
+    return recs
 
 
 def _rank_actionable(recs: pd.DataFrame) -> pd.DataFrame:
@@ -172,13 +263,26 @@ def render_recommendation_table(recs: pd.DataFrame) -> None:
     )
 
 
-def render_execution_cards(recs: pd.DataFrame, key_prefix: str = "exec", limit: int = 5) -> None:
+def render_execution_cards(recs: pd.DataFrame, key_prefix: str = "exec", limit: int = VISIBLE_ACTION_LIMIT, strategy: str = "") -> None:
     st.markdown(ACTION_CSS, unsafe_allow_html=True)
-    st.subheader("Top 5 recommended actions")
-    actionable = _rank_actionable(recs).head(limit)
-    if actionable.empty:
-        st.info("No actionable buy/sell recommendations for the current settings.")
+    st.subheader("Recommended actions")
+
+    now = _now_eastern()
+    if _market_closed_for_today(now):
+        st.info("The daily recommendation queue is cleared after 4:00 PM Eastern when the market closes. Generate a new queue on the next trading day.")
         return
+
+    action_date = _active_recommendation_date(now)
+    actionable = _pending_action_queue(recs, action_date=action_date, strategy=strategy).head(limit)
+    pending_count = len(_pending_action_queue(recs, action_date=action_date, strategy=strategy))
+    if actionable.empty:
+        st.info("No pending buy/sell recommendations remain for today. Executed or skipped actions are hidden from this page.")
+        return
+
+    st.caption(
+        f"Showing {len(actionable)} of {pending_count} pending actions for {action_date}. "
+        f"The daily queue is capped at {DAILY_ACTION_CAP} actions and is cleared after 4:00 PM Eastern."
+    )
 
     for rank, (_, row) in enumerate(actionable.iterrows(), start=1):
         ticker = str(row["ticker"])
@@ -224,9 +328,12 @@ def render_execution_cards(recs: pd.DataFrame, key_prefix: str = "exec", limit: 
                     try:
                         latest_state = load_portfolio_state()
                         log_row = apply_execution(latest_state, ticker, action, True, shares, price, notes)
+                        log_row["date"] = date
+                        log_row["strategy"] = strategy or str(row.get("strategy", ""))
                         append_execution_log(log_row)
                         st.success(f"Recorded executed {action} for {ticker} and updated portfolio state.")
                         st.session_state.pop(key_prefix.replace("_cards", "_recommendations"), None)
+                        st.rerun()
                     except Exception as exc:
                         st.error(str(exc))
 
@@ -260,10 +367,63 @@ def render_execution_cards(recs: pd.DataFrame, key_prefix: str = "exec", limit: 
                 try:
                     latest_state = load_portfolio_state()
                     log_row = apply_execution(latest_state, ticker, action, False, 0.0, default_price, "Not executed")
+                    log_row["date"] = date
+                    log_row["strategy"] = strategy or str(row.get("strategy", ""))
                     append_execution_log(log_row)
                     st.info(f"Recorded {ticker} recommendation as not executed.")
+                    st.rerun()
                 except Exception as exc:
                     st.error(str(exc))
+
+
+def render_custom_action_box(key_prefix: str = "custom_action") -> None:
+    """Allow the user to manually record a buy/sell action outside strategy recommendations."""
+    st.markdown(ACTION_CSS, unsafe_allow_html=True)
+    st.subheader("Custom action")
+    st.caption(
+        "Use this to record a manual buy/sell that is not generated by the strategy. "
+        "The ticker can be any Yahoo-compatible stock or ETF symbol."
+    )
+
+    with st.form(f"{key_prefix}_form", clear_on_submit=False):
+        c1, c2, c3, c4 = st.columns([1.2, 0.9, 1.0, 1.0])
+        with c1:
+            ticker_raw = st.text_input("Ticker", placeholder="Example: DUOL, LULU, IGV", key=f"{key_prefix}_ticker")
+        with c2:
+            action = st.selectbox("Action", ["BUY", "SELL"], key=f"{key_prefix}_action")
+        with c3:
+            shares = st.number_input("Shares", min_value=0.0, value=0.0, step=1.0, format="%.6f", key=f"{key_prefix}_shares")
+        with c4:
+            price = st.number_input("Executed price", min_value=0.0, value=0.0, step=0.01, format="%.4f", key=f"{key_prefix}_price")
+        notes = st.text_input("Notes", placeholder="Optional note for this custom action", key=f"{key_prefix}_notes")
+        submitted = st.form_submit_button("Record custom action", type="primary", use_container_width=True)
+
+    if submitted:
+        ticker = normalize_ticker(ticker_raw)
+        if not ticker:
+            st.error("Please enter a ticker.")
+            return
+        if shares <= 0:
+            st.error("Shares must be greater than zero.")
+            return
+        if price <= 0:
+            st.error("Executed price must be greater than zero.")
+            return
+        try:
+            latest_state = load_portfolio_state()
+            log_row = apply_execution(latest_state, ticker, action, True, shares, price, notes)
+            log_row["date"] = _active_recommendation_date()
+            log_row["strategy"] = "CUSTOM"
+            log_row["source"] = "custom_action"
+            append_execution_log(log_row)
+            st.success(f"Recorded custom {action} for {ticker} and updated portfolio state.")
+            st.info(
+                "If this ticker is outside the NASDAQ-100 universe, open Data Update and refresh tracked supplemental tickers "
+                "so the Portfolio Tracker can monitor its price history."
+            )
+            st.rerun()
+        except Exception as exc:
+            st.error(str(exc))
 
 
 def render_recommendation_dashboard(prices: pd.DataFrame, key_prefix: str = "dashboard", show_full_table: bool = True) -> None:
@@ -291,6 +451,10 @@ def render_recommendation_dashboard(prices: pd.DataFrame, key_prefix: str = "das
     st.caption("Current strategy parameters: " + ", ".join(f"{k}={v}" for k, v in params.items()))
     st.info("Non-NASDAQ-100 holdings are tracked passively and included in portfolio monitoring when supplemental prices are available. They are not bought or sold by the strategy engine.")
 
+    if _market_closed_for_today():
+        st.info("The market is closed for today. Daily recommendations are cleared after 4:00 PM Eastern and will be available again on the next trading day.")
+        return
+
     rec_key = f"{key_prefix}_recommendations"
     col_a, col_b = st.columns([1, 4])
     with col_a:
@@ -313,6 +477,8 @@ def render_recommendation_dashboard(prices: pd.DataFrame, key_prefix: str = "das
     else:
         recs = st.session_state[rec_key]
 
-    render_execution_cards(recs, key_prefix=f"{key_prefix}_cards", limit=5)
+    render_execution_cards(recs, key_prefix=f"{key_prefix}_cards", limit=VISIBLE_ACTION_LIMIT, strategy=state.strategy)
+    st.divider()
+    render_custom_action_box(key_prefix=f"{key_prefix}_custom")
     if show_full_table:
         render_recommendation_table(recs)

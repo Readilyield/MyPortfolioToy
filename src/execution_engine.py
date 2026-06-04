@@ -6,6 +6,7 @@ import pandas as pd
 
 from src.paths import EXECUTION_LOG_PATH, STORAGE_DIR
 from src.portfolio_state import PortfolioState, Holding, save_portfolio_state
+from src.data_loader import normalize_ticker
 
 
 def load_execution_log(path: str | Path = EXECUTION_LOG_PATH) -> pd.DataFrame:
@@ -40,7 +41,7 @@ def apply_execution(
     save_state: bool = True,
 ) -> dict:
     """Apply a user-confirmed execution to cash and holdings."""
-    ticker = ticker.upper().strip()
+    ticker = normalize_ticker(ticker)
     action = action.upper().strip()
     executed_shares = float(executed_shares or 0.0)
     executed_price = float(executed_price or 0.0)

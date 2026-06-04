@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 import streamlit as st
 
@@ -79,6 +81,21 @@ with col2:
 with col3:
     price_band = st.number_input("Minimum price band %", min_value=0.0, max_value=0.20, value=float(state.settings.get("minimum_price_band_pct", 0.01)), step=0.005, format="%.3f")
 
+st.subheader("Performance Tracking")
+_saved_tracking_start = state.settings.get("tracking_start_date")
+try:
+    _tracking_start_default = pd.to_datetime(_saved_tracking_start).date() if _saved_tracking_start else date.today()
+except Exception:
+    _tracking_start_default = date.today()
+tracking_start_date = st.date_input(
+    "Track portfolio performance from",
+    value=_tracking_start_default,
+    help=(
+        "Portfolio Tracker will filter and normalize saved portfolio snapshots from this date onward. "
+        "Save daily snapshots from the home page to build this performance history."
+    ),
+)
+
 if st.button("Save setup", type="primary"):
     holdings = frame_to_holdings(edited, valid_tickers=None)
 
@@ -107,6 +124,7 @@ if st.button("Save setup", type="primary"):
             "max_allocation_per_stock": float(max_alloc),
             "min_trade_value": float(min_trade),
             "minimum_price_band_pct": float(price_band),
+            "tracking_start_date": tracking_start_date.isoformat(),
         },
     )
     save_portfolio_state(new_state)

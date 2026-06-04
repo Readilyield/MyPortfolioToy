@@ -120,20 +120,52 @@ def holdings_market_table(state: PortfolioState, latest_prices: pd.Series, targe
     return pd.DataFrame(rows)
 
 
-def append_portfolio_snapshot(state: PortfolioState, latest_prices: pd.Series, path: str | Path = SNAPSHOT_LOG_PATH) -> None:
+def append_portfolio_snapshot(
+    state: PortfolioState,
+    latest_prices: pd.Series,
+    path: str | Path = SNAPSHOT_LOG_PATH,
+    snapshot_date: str | None = None,
+) -> dict[str, Any]:
+    """Save one portfolio snapshot for historical performance tracking.
+
+    One row is kept per date. If a snapshot for the same date already exists,
+    the newer snapshot replaces it. The aggregate value is used for NAV charts;
+    the holdings JSON is kept so the snapshot can later be audited or used for
+    more detailed historical analysis.
+    """
     ensure_storage()
-    today = datetime.now().date().isoformat()
+    snap_date = snapshot_date or datetime.now().date().isoformat()
+    holdings_payload = {
+        ticker: {
+            "shares": float(holding.shares),
+            "average_cost": holding.average_cost,
+            "latest_price": float(latest_prices.get(ticker, 0.0)),
+            "market_value": float(holding.shares) * float(latest_prices.get(ticker, 0.0)),
+        }
+        for ticker, holding in sorted(state.holdings.items())
+        if float(holding.shares) > 0
+    }
+    total_value = portfolio_value(state, latest_prices)
+    invested_value = sum(item["market_value"] for item in holdings_payload.values())
     row = {
-        "date": today,
-        "cash": state.cash,
-        "portfolio_value": portfolio_value(state, latest_prices),
+        "date": snap_date,
+        "cash": float(state.cash),
+        "invested_value": float(invested_value),
+        "portfolio_value": float(total_value),
+        "cash_weight": float(state.cash) / total_value if total_value > 0 else 0.0,
+        "holding_count": len(holdings_payload),
         "strategy": state.strategy,
         "last_updated": state.last_updated,
+        "snapshot_timestamp": datetime.now().isoformat(timespec="seconds"),
+        "holdings_json": json.dumps(holdings_payload, sort_keys=True),
     }
     p = Path(path)
     df = pd.DataFrame([row])
     if p.exists():
         old = pd.read_csv(p)
-        old = old[old["date"] != today]
+        if "date" in old.columns:
+            old = old[old["date"].astype(str) != str(snap_date)]
         df = pd.concat([old, df], ignore_index=True)
+    df = df.sort_values("date") if "date" in df.columns else df
     df.to_csv(p, index=False)
+    return row

@@ -46,6 +46,7 @@ def generate_recommendations(
     min_trade_value: float = 50.0,
     minimum_price_band_pct: float = 0.01,
     integer_shares: bool = True,
+    max_daily_actions: int | None = None,
 ) -> pd.DataFrame:
     """Convert strategy target weights into one buy/sell/hold row per relevant stock."""
     if price_history.empty:
@@ -104,6 +105,15 @@ def generate_recommendations(
     out = pd.DataFrame(rows)
     if out.empty:
         return out
+
+    if max_daily_actions is not None and max_daily_actions > 0:
+        actionable = out[out["action"].isin(["BUY", "SELL"])].copy()
+        if actionable.empty:
+            return actionable.reset_index(drop=True)
+        actionable["rank_value"] = actionable["estimated_cash_impact"].abs().fillna(0.0)
+        actionable = actionable.sort_values(["rank_value", "ticker"], ascending=[False, True]).head(max_daily_actions)
+        return actionable.drop(columns=["rank_value"]).reset_index(drop=True)
+
     order = {"BUY": 0, "SELL": 1, "HOLD": 2}
     out["action_order"] = out["action"].map(order).fillna(3)
     return out.sort_values(["action_order", "ticker"]).drop(columns=["action_order"]).reset_index(drop=True)
