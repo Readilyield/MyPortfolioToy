@@ -165,7 +165,7 @@ python -m pip install --upgrade yfinance curl_cffi lxml
 Then restart Streamlit:
 
 ```bash
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 If `yfinance` is installed but refresh still fails, common causes are:

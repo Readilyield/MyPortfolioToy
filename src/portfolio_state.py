@@ -83,7 +83,18 @@ def frame_to_holdings(df: pd.DataFrame, valid_tickers: set[str] | None = None) -
         avg = row.get("average_cost", None)
         avg_cost = None if pd.isna(avg) or avg == "" else float(avg)
         if shares > 0:
-            holdings[ticker] = Holding(shares=shares, average_cost=avg_cost)
+            if ticker in holdings:
+                existing = holdings[ticker]
+                total_shares = existing.shares + shares
+                if existing.average_cost is None and avg_cost is None:
+                    combined_avg = None
+                else:
+                    existing_value = (existing.average_cost or 0.0) * existing.shares
+                    new_value = (avg_cost or 0.0) * shares
+                    combined_avg = (existing_value + new_value) / total_shares if total_shares > 0 else None
+                holdings[ticker] = Holding(shares=total_shares, average_cost=combined_avg)
+            else:
+                holdings[ticker] = Holding(shares=shares, average_cost=avg_cost)
     return holdings
 
 

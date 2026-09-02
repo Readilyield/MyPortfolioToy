@@ -1,14 +1,14 @@
 {
   "source": "yfinance/Yahoo Finance",
   "ticker_universe_source": "local file",
-  "period": "5y",
+  "period": "1y",
   "interval": "1d",
-  "refreshed_at_utc": "2026-06-03T16:33:43.607229+00:00",
-  "tickers_requested": 101,
-  "tickers_downloaded": 101,
-  "rows_written": 125735,
-  "start_date": "2021-06-03",
-  "end_date": "2026-06-03",
+  "refreshed_at_utc": "2026-09-01T17:30:32.278800+00:00",
+  "tickers_requested": 91,
+  "tickers_downloaded": 91,
+  "rows_written": 22685,
+  "start_date": "2025-09-02",
+  "end_date": "2026-09-01",
   "benchmark_ticker": "^NDX",
-  "benchmark_rows_written": 1256
+  "benchmark_rows_written": 252
 }

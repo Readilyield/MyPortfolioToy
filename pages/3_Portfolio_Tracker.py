@@ -6,7 +6,15 @@ import pandas as pd
 import streamlit as st
 
 from src.data_loader import load_price_matrix, load_tracking_price_matrix, latest_prices, load_ndx_series, load_ticker_universe
-from src.portfolio_state import load_portfolio_state, save_portfolio_state, portfolio_value, holdings_market_table, append_portfolio_snapshot
+from src.portfolio_state import (
+    load_portfolio_state,
+    save_portfolio_state,
+    portfolio_value,
+    holdings_market_table,
+    append_portfolio_snapshot,
+    frame_to_holdings,
+    holdings_to_frame,
+)
 from src.recommendation_engine import compute_target_weights
 from src.plotting import plot_current_vs_target, plot_portfolio_value, plot_nav_vs_benchmark
 from src.paths import NASDAQ_PRICES_PATH, NDX_PRICES_PATH, SNAPSHOT_LOG_PATH
@@ -55,6 +63,60 @@ c1, c2, c3 = st.columns(3)
 c1.metric("Cash", f"${state.cash:,.2f}")
 c2.metric("Total Portfolio Value", f"${value:,.2f}")
 c3.metric("Latest Data Date", prices.index[-1].date().isoformat() if not prices.empty else "N/A")
+
+st.subheader("Edit Portfolio Holdings")
+with st.expander("Change cash, shares, average cost, or tickers", expanded=False):
+    st.caption(
+        "Use this when your broker holdings changed outside the app. "
+        "Set shares to 0 or delete a row to remove a holding. "
+        "Custom tickers and ETFs are allowed."
+    )
+    edited_cash = st.number_input(
+        "Current cash balance",
+        min_value=0.0,
+        value=float(state.cash),
+        step=100.0,
+        format="%.2f",
+    )
+    holdings_df = holdings_to_frame(state)
+    edited_holdings = st.data_editor(
+        holdings_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "ticker": st.column_config.TextColumn(
+                "Ticker",
+                help="Any Yahoo-compatible ticker, for example AAPL, DUOL, LULU, IGV, or BRK-B.",
+                required=True,
+            ),
+            "shares": st.column_config.NumberColumn(
+                "Shares",
+                min_value=0.0,
+                step=0.0001,
+                format="%.4f",
+                required=True,
+            ),
+            "average_cost": st.column_config.NumberColumn(
+                "Average cost",
+                min_value=0.0,
+                step=0.01,
+                format="%.4f",
+            ),
+        },
+        key="editable_portfolio_holdings",
+    )
+    save_holdings = st.button("Save portfolio changes", type="primary", use_container_width=True)
+    if save_holdings:
+        try:
+            state.cash = float(edited_cash)
+            state.holdings = frame_to_holdings(edited_holdings)
+            save_portfolio_state(state)
+            cached_prices.clear()
+            st.success("Portfolio holdings updated.")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Could not save portfolio changes: {exc}")
 
 st.subheader("Save Portfolio Snapshot")
 st.caption(
